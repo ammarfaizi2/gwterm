@@ -118,10 +118,10 @@ void WebsocketImplSession::onRead(beast::error_code ec,
 		buffer_.consume(bytes_transferred);
 	}
 
-	if (nr_read_after_ > 0) {
-		nr_read_after_--;
+	if (nr_read_after_.fetch_sub(1) > 1)
 		read();
-	}
+	else
+		nr_read_after_.fetch_add(1);
 }
 
 void WebsocketImplSession::onClose(beast::error_code ec)

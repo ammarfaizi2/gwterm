@@ -56,7 +56,7 @@ private:
 	WsImplOnWrite_t		onWrite_;
 	WsImplOnClose_t		onClose_;
 
-	std::atomic<uint32_t>	nr_read_after_;
+	std::atomic<int64_t>	nr_read_after_;
 public:
 	explicit WebsocketImplSession(net::io_context &ioc, ssl::context &ctx);
 	~WebsocketImplSession(void);

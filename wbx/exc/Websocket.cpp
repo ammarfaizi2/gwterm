@@ -40,6 +40,7 @@ void WebsocketSession::setOnRead(WsOnRead_t onRead)
 				const char *data,
 				size_t len, void *udata) {
 		WebsocketSession *ws = static_cast<WebsocketSession *>(udata);
+		(void)ws_sess;
 		return orf(ws, data, len);
 	});
 }
