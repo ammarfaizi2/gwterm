@@ -39,29 +39,35 @@ typedef std::function<size_t(WebsocketImplSession *ws_sess, const char *data, si
 typedef std::function<void(WebsocketImplSession *ws_sess, size_t len, void *udata)> WsImplOnWrite_t;
 typedef std::function<void(WebsocketImplSession *ws_sess, void *udata)> WsImplOnClose_t;
 
+struct PendingWrites {
+	std::vector<std::string>	data_;
+};
+
 class WebsocketImplSession: public std::enable_shared_from_this<WebsocketImplSession> {
 private:
 	websocket::stream<beast::ssl_stream<beast::tcp_stream>> ws_;
 	tcp::resolver		resolver_;
 	beast::flat_buffer	buffer_;
-	std::string		init_write_;
 	std::string		user_agent_;
 	std::string		uri_;
 	std::string		host_;
 	uint16_t		port_;
+	bool			is_connected_ = false;
 
-	void	*udata_;
+	void			*udata_;
 	WsImplOnConnect_t	onConnect_;
 	WsImplOnRead_t		onRead_;
 	WsImplOnWrite_t		onWrite_;
 	WsImplOnClose_t		onClose_;
 
 	std::atomic<int64_t>	nr_read_after_;
+
+	std::mutex	pending_writes_mtx_;
+	std::unique_ptr<PendingWrites> pending_writes_;
 public:
 	explicit WebsocketImplSession(net::io_context &ioc, ssl::context &ctx);
 	~WebsocketImplSession(void);
 
-	inline void setInitWrite(const std::string &initWrite) { init_write_ = initWrite; }
 	inline void setUserAgent(const std::string &userAgent) { user_agent_ = userAgent; }
 	inline void setUri(const std::string &uri) { uri_ = uri; }
 	inline void setHost(const std::string &host) { host_ = host; }
@@ -72,14 +78,23 @@ public:
 	inline void setOnWrite(WsImplOnWrite_t onWrite) { onWrite_ = onWrite; }
 	inline void setOnClose(WsImplOnClose_t onClose) { onClose_ = onClose; }
 
-	inline void write(const char *data, size_t len) {
+	inline void write(const char *data, size_t len)
+	{
+		std::lock_guard<std::mutex> lock(pending_writes_mtx_);
+
+		if (!is_connected_) {
+			pending_writes_->data_.push_back(std::string(data, len));
+			return;
+		}
+
 		ws_.async_write(net::buffer(data, len),
 				beast::bind_front_handler(
 					&WebsocketImplSession::onWrite,
 					shared_from_this()));
 	}
 
-	inline void read(void) {
+	inline void read(void)
+	{
 		ws_.async_read(buffer_,
 			       beast::bind_front_handler(
 				       &WebsocketImplSession::onRead,

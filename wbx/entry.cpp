@@ -1,40 +1,27 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 #include <iostream>
-#include <wbx/exc/Websocket.hpp>
+#include <wbx/exc/exc_okx/OKX.hpp>
 
-static const char payload[] = "{\"op\":\"subscribe\",\"args\":[{\"channel\":\"mark-price\",\"instId\":\"BTC-USDT\"}, {\"channel\":\"mark-price\",\"instId\":\"ETH-USDT\"}]}";
+using namespace wbx::exc;
+
+using wbx::exc::Websocket;
+using wbx::exc::ExchangeFoundation;
+using wbx::exc::exc_OKX::OKX;
+
+static void btc_usdt_cb(ExchangeFoundation *ef, const price_update &up, void *udata)
+{
+	printf("symbol: %s, ts: %lu, price: %s\n", up.symbol.c_str(), up.ts, up.price.c_str());
+}
 
 int main(void)
 {
-	try {
-		wbx::exc::Websocket ws;
+	std::shared_ptr<Websocket> ws = std::make_unique<Websocket>();
+	std::unique_ptr<OKX> okx = std::make_unique<OKX>();
 
-		auto *wsk = ws.createSession("wspri.okx.com", 8443, "/ws/v5/ipublic");
-		wsk->setOnConnect([](wbx::exc::WebsocketSession *wsk) {
-			std::cout << "Connected!" << std::endl;
-			wsk->write(payload, sizeof(payload) - 1);
-		});
-
-		wsk->setOnWrite([](wbx::exc::WebsocketSession *wsk, size_t len) {
-			std::cout << "Written: " << len << std::endl;
-			wsk->read();
-		});
-
-		wsk->setOnRead([](wbx::exc::WebsocketSession *wsk, const char *data, size_t len) {
-			std::cout << "Read: " << std::string(data, len) << std::endl;
-			wsk->readAfter();
-			return len;
-		});
-
-		wsk->setOnClose([](wbx::exc::WebsocketSession *wsk) {
-			std::cout << "Closed!" << std::endl;
-		});
-
-		wsk->run();
-		ws.run();
-	} catch (const std::exception &e) {
-		std::cerr << "Exception: " << e.what() << std::endl;
-		throw e;
-	}
+	okx->setWebsocket(ws);
+	okx->start();
+	okx->listenPriceUpdate("ETH-USDT", &btc_usdt_cb, nullptr);
+	ws->run();
+	return 0;
 }

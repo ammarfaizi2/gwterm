@@ -71,6 +71,10 @@
 		"typeinfo": "cpp",
 		"variant": "cpp",
 		"*.ipp": "cpp",
-		"coroutine": "cpp"
+		"coroutine": "cpp",
+		"forward_list": "cpp",
+		"ranges": "cpp",
+		"span": "cpp",
+		"valarray": "cpp"
 	}
 }

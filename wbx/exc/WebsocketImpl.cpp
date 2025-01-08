@@ -3,6 +3,7 @@
 #include <wbx/exc/WebsocketImpl.hpp>
 #undef EXC_USE_WEBSOCKET_IMPL
 
+#include <cstdio>
 #include <wbx/exc/RootCerts.hpp>
 
 namespace wbx {
@@ -11,7 +12,9 @@ namespace exc {
 WebsocketImplSession::WebsocketImplSession(net::io_context &ioc,
 					   ssl::context &ctx):
 	ws_(net::make_strand(ioc), ctx),
-	resolver_(net::make_strand(ioc))
+	resolver_(net::make_strand(ioc)),
+	nr_read_after_(0),
+	pending_writes_(std::make_unique<PendingWrites>())
 {
 }
 
@@ -91,6 +94,17 @@ void WebsocketImplSession::onHandshake(beast::error_code ec)
 	if (ec)
 		return;
 
+	std::lock_guard<std::mutex> lock(pending_writes_mtx_);
+	is_connected_ = true;
+	if (pending_writes_ && !pending_writes_->data_.empty()) {
+		for (const auto &data : pending_writes_->data_)
+			ws_.async_write(net::buffer(data.data(), data.size()),
+					beast::bind_front_handler(
+						&WebsocketImplSession::onWrite,
+						shared_from_this()));
+		pending_writes_.reset();
+	}
+
 	if (onConnect_)
 		onConnect_(this, udata_);
 }
@@ -113,12 +127,13 @@ void WebsocketImplSession::onRead(beast::error_code ec,
 
 	if (onRead_) {
 		const char *buf = reinterpret_cast<const char *>(buffer_.data().data());
-		buffer_.consume(onRead_(this, buf, bytes_transferred, udata_));
+		size_t len = buffer_.size();
+		buffer_.consume(onRead_(this, buf, len, udata_));
 	} else {
 		buffer_.consume(bytes_transferred);
 	}
 
-	if (nr_read_after_.fetch_sub(1) > 1)
+	if (nr_read_after_.fetch_sub(1) > 0)
 		read();
 	else
 		nr_read_after_.fetch_add(1);
@@ -126,9 +141,6 @@ void WebsocketImplSession::onRead(beast::error_code ec,
 
 void WebsocketImplSession::onClose(beast::error_code ec)
 {
-	if (ec)
-		return;
-
 	if (onClose_)
 		onClose_(this, udata_);
 }
