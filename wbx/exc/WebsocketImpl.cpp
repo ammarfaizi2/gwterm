@@ -13,8 +13,7 @@ WebsocketImplSession::WebsocketImplSession(net::io_context &ioc,
 					   ssl::context &ctx):
 	ws_(net::make_strand(ioc), ctx),
 	resolver_(net::make_strand(ioc)),
-	nr_read_after_(0),
-	pending_writes_(std::make_unique<PendingWrites>())
+	nr_read_after_(0)
 {
 }
 
@@ -89,24 +88,58 @@ void WebsocketImplSession::onSslHandshake(beast::error_code ec)
 				shared_from_this()));
 }
 
+inline
+void PendingWrites::__push(const std::string &data)
+{
+	std::lock_guard<std::mutex> lock(mtx_);
+
+	data_.push(data);
+}
+
+inline
+std::string PendingWrites::__pop(void)
+{
+	std::lock_guard<std::mutex> lock(mtx_);
+	std::string data = data_.front();
+	data_.pop();
+	return data;
+}
+
+void PendingWrites::push(const std::string &data)
+{
+	std::lock_guard<std::mutex> lock(mtx_);
+	__push(data);
+}
+
+inline
+std::string PendingWrites::pop(void)
+{
+	std::lock_guard<std::mutex> lock(mtx_);
+	return __pop();
+}
+
+void WebsocketImplSession::popWrite(void)
+{
+	std::lock_guard<std::mutex> lock(pw_.mtx_);
+
+	if (pw_.__size()) {
+		ws_.async_write(net::buffer(pw_.__pop()),
+				beast::bind_front_handler(
+					&WebsocketImplSession::onWrite,
+					shared_from_this()));
+	}
+}
+
 void WebsocketImplSession::onHandshake(beast::error_code ec)
 {
 	if (ec)
 		return;
 
-	std::lock_guard<std::mutex> lock(pending_writes_mtx_);
 	is_connected_ = true;
-	if (pending_writes_ && !pending_writes_->data_.empty()) {
-		for (const auto &data : pending_writes_->data_)
-			ws_.async_write(net::buffer(data.data(), data.size()),
-					beast::bind_front_handler(
-						&WebsocketImplSession::onWrite,
-						shared_from_this()));
-		pending_writes_.reset();
-	}
-
 	if (onConnect_)
 		onConnect_(this, udata_);
+
+	popWrite();
 }
 
 void WebsocketImplSession::onWrite(beast::error_code ec,
@@ -117,6 +150,8 @@ void WebsocketImplSession::onWrite(beast::error_code ec,
 
 	if (onWrite_)
 		onWrite_(this, bytes_transferred, udata_);
+
+	popWrite();
 }
 
 void WebsocketImplSession::onRead(beast::error_code ec,
@@ -137,6 +172,8 @@ void WebsocketImplSession::onRead(beast::error_code ec,
 		read();
 	else
 		nr_read_after_.fetch_add(1);
+
+	popWrite();
 }
 
 void WebsocketImplSession::onClose(beast::error_code ec)

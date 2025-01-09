@@ -21,6 +21,7 @@ int main(void)
 
 	okx->setWebsocket(ws);
 	okx->start();
+	okx->listenPriceUpdate("ETH-USDT-SWAP", &btc_usdt_cb, nullptr);
 	okx->listenPriceUpdate("ETH-USDT", &btc_usdt_cb, nullptr);
 	ws->run();
 	return 0;

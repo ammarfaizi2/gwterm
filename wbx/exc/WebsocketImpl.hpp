@@ -21,6 +21,7 @@
 #include <memory>
 #include <string>
 #include <atomic>
+#include <queue>
 
 namespace wbx {
 namespace exc {
@@ -40,7 +41,20 @@ typedef std::function<void(WebsocketImplSession *ws_sess, size_t len, void *udat
 typedef std::function<void(WebsocketImplSession *ws_sess, void *udata)> WsImplOnClose_t;
 
 struct PendingWrites {
-	std::vector<std::string>	data_;
+	std::mutex			mtx_;
+	std::queue<std::string>		data_;
+
+	inline std::string __pop(void);
+	inline void __push(const std::string &data);
+	inline std::string pop(void);
+	void push(const std::string &data);
+	inline size_t __size(void) { return data_.size(); }
+
+	inline size_t size(void)
+	{
+		std::lock_guard<std::mutex> lock(mtx_);
+		return __size();
+	}
 };
 
 class WebsocketImplSession: public std::enable_shared_from_this<WebsocketImplSession> {
@@ -53,6 +67,7 @@ private:
 	std::string		host_;
 	uint16_t		port_;
 	bool			is_connected_ = false;
+	bool			need_invoke_connect_on_first_write_ = false;
 
 	void			*udata_;
 	WsImplOnConnect_t	onConnect_;
@@ -61,9 +76,10 @@ private:
 	WsImplOnClose_t		onClose_;
 
 	std::atomic<int64_t>	nr_read_after_;
+	PendingWrites		pw_;
 
-	std::mutex	pending_writes_mtx_;
-	std::unique_ptr<PendingWrites> pending_writes_;
+	void popWrite(void);
+
 public:
 	explicit WebsocketImplSession(net::io_context &ioc, ssl::context &ctx);
 	~WebsocketImplSession(void);
@@ -80,17 +96,8 @@ public:
 
 	inline void write(const char *data, size_t len)
 	{
-		std::lock_guard<std::mutex> lock(pending_writes_mtx_);
-
-		if (!is_connected_) {
-			pending_writes_->data_.push_back(std::string(data, len));
-			return;
-		}
-
-		ws_.async_write(net::buffer(data, len),
-				beast::bind_front_handler(
-					&WebsocketImplSession::onWrite,
-					shared_from_this()));
+		std::string s(data, len);
+		pw_.push(s);
 	}
 
 	inline void read(void)
