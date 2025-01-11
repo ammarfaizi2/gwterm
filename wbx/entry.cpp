@@ -16,9 +16,7 @@ static const char *symbols[] = {
 	"BNB-USDT",
 	"TON-USDT",
 	"NOT-USDT",
-	"AAVE-USDT",
 	"MEW-USDT",
-	"MOVE-USDT",
 	"XAUT-USDT",
 };
 

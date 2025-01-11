@@ -44,7 +44,7 @@ void ExchangeFoundation::dumpOHLCData(const std::string &symbol)
 	static const char tred[] = "\033[31m";
 	static const char tgreen[] = "\033[32m";
 	const struct OHLCGroup &og = m_ohlc_data_[symbol];
-	const struct OHLCPrice &p = og.ohlc_1m_.prices.back();
+	const struct OHLCPrice &p = og.ohlc_1m.prices.back();
 
 	if (p.curr == p.prev)
 		return;
@@ -117,7 +117,7 @@ void ExchangeFoundation::__setOHLCData(struct OHLCData &dt, uint64_t price,
 			p.close *= mul;
 			p.curr *= mul;
 			p.prev *= mul;
-		} else {
+		} else if (p.prec > prec) {
 			uint64_t mul, prec_diff;
 
 			prec_diff = p.prec - prec;
@@ -143,13 +143,14 @@ void ExchangeFoundation::__setOHLCGroup(const std::string &symbol, uint64_t pric
 {
 	struct OHLCGroup &og = m_ohlc_data_[symbol];
 
-	__setOHLCData(og.ohlc_1s_, price, prec, ts, 1);
-	__setOHLCData(og.ohlc_1m_, price, prec, ts, 60);
-	__setOHLCData(og.ohlc_5m_, price, prec, ts, 300);
-	__setOHLCData(og.ohlc_15m_, price, prec, ts, 900);
-	__setOHLCData(og.ohlc_30m_, price, prec, ts, 1800);
-	__setOHLCData(og.ohlc_1h_, price, prec, ts, 3600);
-	__setOHLCData(og.ohlc_4h_, price, prec, ts, 14400);
+	__setOHLCData(og.ohlc_1s, price, prec, ts, 1);
+	__setOHLCData(og.ohlc_1m, price, prec, ts, 60);
+	__setOHLCData(og.ohlc_5m, price, prec, ts, 300);
+	__setOHLCData(og.ohlc_15m, price, prec, ts, 900);
+	__setOHLCData(og.ohlc_30m, price, prec, ts, 1800);
+	__setOHLCData(og.ohlc_1h, price, prec, ts, 3600);
+	__setOHLCData(og.ohlc_4h, price, prec, ts, 14400);
+	__setOHLCData(og.ohlc_1d, price, prec, ts, 86400);
 }
 
 void ExchangeFoundation::setLastPrice(const std::string &symbol,

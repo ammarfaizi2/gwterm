@@ -51,13 +51,14 @@ struct OHLCData {
 };
 
 struct OHLCGroup {
-	struct OHLCData ohlc_1s_;
-	struct OHLCData ohlc_1m_;
-	struct OHLCData ohlc_5m_;
-	struct OHLCData ohlc_15m_;
-	struct OHLCData ohlc_30m_;
-	struct OHLCData ohlc_1h_;
-	struct OHLCData ohlc_4h_;
+	struct OHLCData ohlc_1s;
+	struct OHLCData ohlc_1m;
+	struct OHLCData ohlc_5m;
+	struct OHLCData ohlc_15m;
+	struct OHLCData ohlc_30m;
+	struct OHLCData ohlc_1h;
+	struct OHLCData ohlc_4h;
+	struct OHLCData ohlc_1d;
 };
 
 class ExchangeFoundation {
