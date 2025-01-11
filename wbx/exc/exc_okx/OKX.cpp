@@ -16,8 +16,8 @@ OKX::OKX(void) = default;
 
 OKX::~OKX(void) = default;
 
-void OKX::listenPriceUpdate(const std::string &symbol, PriceUpdateCb_t cb,
-			    void *udata)
+void OKX::listenPriceUpdateBatch(const std::vector<std::string> &symbols,
+				 PriceUpdateCb_t cb, void *udata)
 {
 	if (!ws_started_)
 		throw std::runtime_error("WebSocket has not been started");
@@ -26,16 +26,42 @@ void OKX::listenPriceUpdate(const std::string &symbol, PriceUpdateCb_t cb,
 
 	j["op"] = "subscribe";
 	j["args"] = json::array();
-	j["args"].push_back({
-		{"channel", "tickers"},
-		{"instId", symbol}
-	});
+	for (const auto &s : symbols) {
+		j["args"].push_back({
+			{"channel", "tickers"},
+			{"instId", s}
+		});
+		addPriceUpdateCb(s, cb, udata);
+	}
 
-	wss_->write(j.dump().c_str(), j.dump().size());
-	addPriceUpdateCb(symbol, cb, udata);
+	std::string str = j.dump();
+	wss_->write(str.c_str(), str.size());
 }
 
-void OKX::unlistenPriceUpdate(const std::string &symbol)
+void OKX::listenPriceUpdateBatch(const std::vector<std::string> &symbols,
+				 std::vector<PriceUpdateCb_t> cbs,
+				 std::vector<void *> udatas)
+{
+	if (!ws_started_)
+		throw std::runtime_error("WebSocket has not been started");
+
+	json j;
+
+	j["op"] = "subscribe";
+	j["args"] = json::array();
+	for (size_t i = 0; i < symbols.size(); i++) {
+		j["args"].push_back({
+			{"channel", "tickers"},
+			{"instId", symbols[i]}
+		});
+		addPriceUpdateCb(symbols[i], cbs[i], udatas[i]);
+	}
+
+	std::string str = j.dump();
+	wss_->write(str.c_str(), str.size());
+}
+
+void OKX::unlistenPriceUpdateBatch(const std::vector<std::string> &symbols)
 {
 	if (!ws_started_)
 		throw std::runtime_error("WebSocket has not been started");
@@ -44,13 +70,32 @@ void OKX::unlistenPriceUpdate(const std::string &symbol)
 
 	j["op"] = "unsubscribe";
 	j["args"] = json::array();
-	j["args"].push_back({
-		{"channel", "tickers"},
-		{"instId", symbol}
-	});
+	for (const auto &s : symbols) {
+		j["args"].push_back({
+			{"channel", "tickers"},
+			{"instId", s}
+		});
+		delPriceUpdateCb(s);
+	}
 
 	wss_->write(j.dump().c_str(), j.dump().size());
-	delPriceUpdateCb(symbol);
+}
+
+void OKX::listenPriceUpdate(const std::string &symbol, PriceUpdateCb_t cb,
+			    void *udata)
+{
+	if (!ws_started_)
+		throw std::runtime_error("WebSocket has not been started");
+
+	return listenPriceUpdateBatch({symbol}, {cb}, {udata});
+}
+
+void OKX::unlistenPriceUpdate(const std::string &symbol)
+{
+	if (!ws_started_)
+		throw std::runtime_error("WebSocket has not been started");
+
+	return unlistenPriceUpdateBatch({symbol});
 }
 
 void OKX::onWsConnect(void)
@@ -60,6 +105,7 @@ void OKX::onWsConnect(void)
 void OKX::onWsWrite(size_t len)
 {
 	wss_->read();
+	(void)len;
 }
 
 size_t OKX::onWsRead(const char *data, size_t len)

@@ -23,12 +23,11 @@ static const char *symbols[] = {
 };
 
 
-static void price_update_cb(ExchangeFoundation *ef, const ExcPriceUpdate &up, void *udata)
+static void price_update_cb(ExchangeFoundation *okx, const ExcPriceUpdate &up, void *udata)
 {
 	static const char tred[] = "\033[31m";
 	static const char tgreen[] = "\033[32m";
 	static const char tcyan[] = "\033[36m";
-	OKX *okx = static_cast<OKX *>(udata);
 
 	static char directions[sizeof(symbols) / sizeof(symbols[0])] = { 0 };
 	static std::string prev_prices[sizeof(symbols) / sizeof(symbols[0])];
@@ -78,19 +77,21 @@ static void price_update_cb(ExchangeFoundation *ef, const ExcPriceUpdate &up, vo
 	}
 
 	printf("\n");
+	(void)udata;
 }
 
 int main(void)
 {
 	std::shared_ptr<Websocket> ws = std::make_unique<Websocket>();
 	std::unique_ptr<OKX> okx = std::make_unique<OKX>();
-	OKX *okx_p = okx.get();
-	size_t i;
 
 	okx->setWebsocket(ws);
 	okx->start();
-	for (i = 0; i < sizeof(symbols) / sizeof(symbols[0]); i++)
-		okx->listenPriceUpdate(symbols[i], &price_update_cb, okx_p);
+
+	{
+		std::vector<std::string> symbols_v(symbols, symbols + sizeof(symbols) / sizeof(symbols[0]));
+		okx->listenPriceUpdateBatch(symbols_v, price_update_cb, nullptr);
+	}
 
 	ws->run();
 	return 0;

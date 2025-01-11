@@ -256,5 +256,32 @@ void ExchangeFoundation::setWebsocket(std::shared_ptr<Websocket> ws)
 	ws_ = ws;
 }
 
+void ExchangeFoundation::listenPriceUpdateBatch(const std::vector<std::string> &symbols,
+						PriceUpdateCb_t cb, void *udata)
+{
+	size_t i;
+
+	for (i = 0; i < symbols.size(); i++)
+		listenPriceUpdate(symbols[i], cb, udata);
+}
+
+void ExchangeFoundation::listenPriceUpdateBatch(const std::vector<std::string> &symbols,
+						std::vector<PriceUpdateCb_t> cbs,
+						std::vector<void *> udatas)
+{
+	size_t i;
+
+	for (i = 0; i < symbols.size(); i++)
+		listenPriceUpdate(symbols[i], cbs[i], udatas[i]);
+}
+
+void ExchangeFoundation::unlistenPriceUpdateBatch(const std::vector<std::string> &symbols)
+{
+	size_t i;
+
+	for (i = 0; i < symbols.size(); i++)
+		unlistenPriceUpdate(symbols[i]);
+}
+
 } /* namespace exc */
 } /* namespace wbx */

@@ -28,6 +28,9 @@ public:
 
 	virtual void listenPriceUpdate(const std::string &symbol, PriceUpdateCb_t cb, void *udata);
 	virtual void unlistenPriceUpdate(const std::string &symbol);
+	virtual void listenPriceUpdateBatch(const std::vector<std::string> &symbols, PriceUpdateCb_t cb, void *udata);
+	virtual void listenPriceUpdateBatch(const std::vector<std::string> &symbols, std::vector<PriceUpdateCb_t> cbs, std::vector<void *> udatas);
+	virtual void unlistenPriceUpdateBatch(const std::vector<std::string> &symbols);
 	virtual void start(void);
 };
 
