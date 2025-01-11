@@ -94,11 +94,6 @@ void WebsocketSession::write(const char *data, size_t len)
 
 void WebsocketSession::read(void)
 {
-	ws_sess_->read();
-}
-
-void WebsocketSession::readAfter(void)
-{
 	ws_sess_->readAfter();
 }
 
@@ -119,6 +114,9 @@ Websocket::Websocket(void):
 
 Websocket::~Websocket(void)
 {
+	if (ws_thread_)
+		ws_thread_->join();
+
 	delete ws_;
 }
 
@@ -137,6 +135,13 @@ WebsocketSession *Websocket::createSession(const std::string &host,
 void Websocket::run(void)
 {
 	ws_->run();
+}
+
+void Websocket::bgRun(void)
+{
+	ws_thread_ = std::make_unique<std::thread>([this]() {
+		ws_->run();
+	});
 }
 
 } /* namespace exc */

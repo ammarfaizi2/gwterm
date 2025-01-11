@@ -14,6 +14,7 @@ private:
 
 	inline void handleWsChannel(void *a);
 	inline void handleChanMarkPrice(void *a);
+	inline void handleChanTickers(void *a);
 
 protected:
 	virtual void onWsConnect(void);
@@ -25,7 +26,7 @@ public:
 	OKX(void);
 	~OKX(void);
 
-	virtual void listenPriceUpdate(const std::string &symbol, price_update_cb_t cb, void *udata);
+	virtual void listenPriceUpdate(const std::string &symbol, PriceUpdateCb_t cb, void *udata);
 	virtual void unlistenPriceUpdate(const std::string &symbol);
 	virtual void start(void);
 };

@@ -3,6 +3,7 @@
 #ifndef EXC__WEBSOCKET__HPP
 #define EXC__WEBSOCKET__HPP
 
+#include <thread>
 #include <vector>
 #include <memory>
 #include <string>
@@ -53,7 +54,6 @@ public:
 
 	void write(const char *data, size_t len);
 	void read(void);
-	void readAfter(void);
 	void run(void);
 };
 
@@ -65,6 +65,7 @@ private:
 	void		*ws_;
 #endif
 	std::vector<std::unique_ptr<WebsocketSession>> ws_sessions_;
+	std::unique_ptr<std::thread> ws_thread_;
 
 public:
 	Websocket(void);
@@ -76,6 +77,7 @@ public:
 #endif
 
 	void run(void);
+	void bgRun(void);
 
 	WebsocketSession *createSession(const std::string &host = "",
 					uint16_t port = 8443,

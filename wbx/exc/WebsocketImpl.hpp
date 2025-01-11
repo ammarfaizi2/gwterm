@@ -40,21 +40,57 @@ typedef std::function<size_t(WebsocketImplSession *ws_sess, const char *data, si
 typedef std::function<void(WebsocketImplSession *ws_sess, size_t len, void *udata)> WsImplOnWrite_t;
 typedef std::function<void(WebsocketImplSession *ws_sess, void *udata)> WsImplOnClose_t;
 
-struct PendingWrites {
-	std::mutex			mtx_;
-	std::queue<std::string>		data_;
+struct write_buf {
+	void	*data_;
+	size_t	len_;
 
-	inline std::string __pop(void);
-	inline void __push(const std::string &data);
-	inline std::string pop(void);
-	void push(const std::string &data);
-	inline size_t __size(void) { return data_.size(); }
-
-	inline size_t size(void)
+	inline write_buf(void) noexcept:
+		data_(nullptr),
+		len_(0)
 	{
-		std::lock_guard<std::mutex> lock(mtx_);
-		return __size();
 	}
+
+	inline ~write_buf(void) noexcept
+	{
+		if (data_)
+			free(data_);
+	}
+
+	inline write_buf(write_buf &&other) noexcept:
+		data_(other.data_),
+		len_(other.len_)
+	{
+		other.data_ = nullptr;
+		other.len_ = 0;
+	}
+
+	inline write_buf &operator=(write_buf &&other) noexcept
+	{
+		if (this != &other) {
+			if (data_)
+				free(data_);
+			data_ = other.data_;
+			len_ = other.len_;
+			other.data_ = nullptr;
+			other.len_ = 0;
+		}
+		return *this;
+	}
+
+	inline bool set(const void *data, size_t len) noexcept
+	{
+		void *new_data = malloc(len);
+		if (!new_data)
+			return false;
+
+		memcpy(new_data, data, len);
+		data_ = new_data;
+		len_ = len;
+		return true;
+	}
+
+	inline const void *data(void) const noexcept { return data_; }
+	inline size_t len(void) const noexcept { return len_; }
 };
 
 class WebsocketImplSession: public std::enable_shared_from_this<WebsocketImplSession> {
@@ -66,19 +102,18 @@ private:
 	std::string		uri_;
 	std::string		host_;
 	uint16_t		port_;
-	bool			is_connected_ = false;
-	bool			need_invoke_connect_on_first_write_ = false;
 
-	void			*udata_;
-	WsImplOnConnect_t	onConnect_;
-	WsImplOnRead_t		onRead_;
-	WsImplOnWrite_t		onWrite_;
-	WsImplOnClose_t		onClose_;
-
+	void			*udata_ = nullptr;
+	WsImplOnConnect_t	onConnect_ = nullptr;
+	WsImplOnRead_t		onRead_ = nullptr;
+	WsImplOnWrite_t		onWrite_ = nullptr;
+	WsImplOnClose_t		onClose_ = nullptr;
 	std::atomic<int64_t>	nr_read_after_;
-	PendingWrites		pw_;
 
-	void popWrite(void);
+	std::mutex			wq_mtx_;
+	std::queue<struct write_buf>	write_queue_;
+
+	bool popNrRead(void);
 
 public:
 	explicit WebsocketImplSession(net::io_context &ioc, ssl::context &ctx);
@@ -94,22 +129,6 @@ public:
 	inline void setOnWrite(WsImplOnWrite_t onWrite) { onWrite_ = onWrite; }
 	inline void setOnClose(WsImplOnClose_t onClose) { onClose_ = onClose; }
 
-	inline void write(const char *data, size_t len)
-	{
-		std::string s(data, len);
-		pw_.push(s);
-	}
-
-	inline void read(void)
-	{
-		ws_.async_read(buffer_,
-			       beast::bind_front_handler(
-				       &WebsocketImplSession::onRead,
-				       shared_from_this()));
-	}
-
-	inline void readAfter(void) { nr_read_after_++; }
-
 	void run(void);
 	void onResolve(beast::error_code ec, tcp::resolver::results_type results);
 	void onConnect(beast::error_code ec, tcp::resolver::results_type::endpoint_type ep);
@@ -118,6 +137,10 @@ public:
 	void onWrite(beast::error_code ec, std::size_t bytes_transferred);
 	void onRead(beast::error_code ec, std::size_t bytes_transferred);
 	void onClose(beast::error_code ec);
+
+	void write(const void *data, size_t len);
+	void read(void);
+	inline void readAfter(void) { nr_read_after_.fetch_add(1); }
 };
 
 class WebsocketImpl {

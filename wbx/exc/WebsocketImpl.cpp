@@ -32,12 +32,9 @@ void WebsocketImplSession::onResolve(beast::error_code ec,
 		return;
 
 	beast::get_lowest_layer(ws_).expires_after(std::chrono::seconds(60));
-
-	// Make the connection on the IP address we get from a lookup
-	beast::get_lowest_layer(ws_)
-		.async_connect(results, beast::bind_front_handler(
-				&WebsocketImplSession::onConnect,
-				shared_from_this()));
+	beast::get_lowest_layer(ws_).async_connect(results,
+		beast::bind_front_handler(&WebsocketImplSession::onConnect,
+					  shared_from_this()));
 }
 
 void WebsocketImplSession::onConnect(beast::error_code ec,
@@ -49,20 +46,15 @@ void WebsocketImplSession::onConnect(beast::error_code ec,
 		return;
 
 	beast::get_lowest_layer(ws_).expires_after(std::chrono::seconds(60));
-
 	host = host_.c_str();
-	if (!SSL_set_tlsext_host_name(ws_.next_layer().native_handle(), host)) {
-		// ec = beast::error_code(static_cast<int>(::ERR_get_error()),
-		// 			net::error::get_ssl_category());
+	if (!SSL_set_tlsext_host_name(ws_.next_layer().native_handle(), host))
 		return;
-	}
 
 	host_ += ':' + std::to_string(ep.port());
-	ws_.next_layer()
-		.async_handshake(ssl::stream_base::client,
-				 beast::bind_front_handler(
-					&WebsocketImplSession::onSslHandshake,
-					shared_from_this()));
+	ws_.next_layer().async_handshake(ssl::stream_base::client,
+		beast::bind_front_handler(
+				&WebsocketImplSession::onSslHandshake,
+				shared_from_this()));
 }
 
 void WebsocketImplSession::onSslHandshake(beast::error_code ec)
@@ -72,62 +64,17 @@ void WebsocketImplSession::onSslHandshake(beast::error_code ec)
 
 	beast::get_lowest_layer(ws_).expires_never();
 
-	ws_.set_option(
-		websocket::stream_base::timeout::suggested(
+	ws_.set_option(websocket::stream_base::timeout::suggested(
 			beast::role_type::client));
 
-	ws_.set_option(
-		websocket::stream_base::decorator(
-			[ua=user_agent_](websocket::request_type& req) {
-				req.set(http::field::user_agent, ua);
-			}));
+	ws_.set_option(websocket::stream_base::decorator(
+		[ua = user_agent_](websocket::request_type& req)
+		{
+			req.set(http::field::user_agent, ua);
+		}));
 
-	ws_.async_handshake(host_, uri_,
-			beast::bind_front_handler(
-				&WebsocketImplSession::onHandshake,
-				shared_from_this()));
-}
-
-inline
-void PendingWrites::__push(const std::string &data)
-{
-	std::lock_guard<std::mutex> lock(mtx_);
-
-	data_.push(data);
-}
-
-inline
-std::string PendingWrites::__pop(void)
-{
-	std::lock_guard<std::mutex> lock(mtx_);
-	std::string data = data_.front();
-	data_.pop();
-	return data;
-}
-
-void PendingWrites::push(const std::string &data)
-{
-	std::lock_guard<std::mutex> lock(mtx_);
-	__push(data);
-}
-
-inline
-std::string PendingWrites::pop(void)
-{
-	std::lock_guard<std::mutex> lock(mtx_);
-	return __pop();
-}
-
-void WebsocketImplSession::popWrite(void)
-{
-	std::lock_guard<std::mutex> lock(pw_.mtx_);
-
-	if (pw_.__size()) {
-		ws_.async_write(net::buffer(pw_.__pop()),
-				beast::bind_front_handler(
-					&WebsocketImplSession::onWrite,
-					shared_from_this()));
-	}
+	ws_.async_handshake(host_, uri_, beast::bind_front_handler(
+		&WebsocketImplSession::onHandshake, shared_from_this()));
 }
 
 void WebsocketImplSession::onHandshake(beast::error_code ec)
@@ -135,11 +82,17 @@ void WebsocketImplSession::onHandshake(beast::error_code ec)
 	if (ec)
 		return;
 
-	is_connected_ = true;
 	if (onConnect_)
 		onConnect_(this, udata_);
 
-	popWrite();
+	std::lock_guard<std::mutex> lock(wq_mtx_);
+	if (!write_queue_.empty()) {
+		struct write_buf &wb = write_queue_.front();
+		ws_.async_write(net::buffer(wb.data(), wb.len()),
+				beast::bind_front_handler(
+					&WebsocketImplSession::onWrite,
+					shared_from_this()));
+	}
 }
 
 void WebsocketImplSession::onWrite(beast::error_code ec,
@@ -151,7 +104,17 @@ void WebsocketImplSession::onWrite(beast::error_code ec,
 	if (onWrite_)
 		onWrite_(this, bytes_transferred, udata_);
 
-	popWrite();
+	std::lock_guard<std::mutex> lock(wq_mtx_);
+	write_queue_.pop();
+	if (!write_queue_.empty()) {
+		struct write_buf &wb = write_queue_.front();
+		ws_.async_write(net::buffer(wb.data(), wb.len()),
+				beast::bind_front_handler(
+					&WebsocketImplSession::onWrite,
+					shared_from_this()));
+	} else {
+		popNrRead();
+	}
 }
 
 void WebsocketImplSession::onRead(beast::error_code ec,
@@ -168,18 +131,53 @@ void WebsocketImplSession::onRead(beast::error_code ec,
 		buffer_.consume(bytes_transferred);
 	}
 
-	if (nr_read_after_.fetch_sub(1) > 0)
-		read();
-	else
-		nr_read_after_.fetch_add(1);
-
-	popWrite();
+	std::lock_guard<std::mutex> lock(wq_mtx_);
+	if (!write_queue_.empty()) {
+		struct write_buf &wb = write_queue_.front();
+		ws_.async_write(net::buffer(wb.data(), wb.len()),
+				beast::bind_front_handler(
+					&WebsocketImplSession::onWrite,
+					shared_from_this()));
+	} else {
+		popNrRead();
+	}
 }
 
 void WebsocketImplSession::onClose(beast::error_code ec)
 {
+	(void)ec;
 	if (onClose_)
 		onClose_(this, udata_);
+}
+
+bool WebsocketImplSession::popNrRead(void)
+{
+	if (nr_read_after_.fetch_sub(1) > 0) {
+		read();
+		return true;
+	} else {
+		nr_read_after_.fetch_add(1);
+		return false;
+	}
+}
+
+void WebsocketImplSession::write(const void *data, size_t len)
+{
+	struct write_buf wb;
+
+	if (!wb.set(data, len))
+		throw std::bad_alloc();
+
+	std::lock_guard<std::mutex> lock(wq_mtx_);
+	write_queue_.push(std::move(wb));
+}
+
+void WebsocketImplSession::read(void)
+{
+	ws_.async_read(buffer_,
+		beast::bind_front_handler(
+			&WebsocketImplSession::onRead,
+			shared_from_this()));
 }
 
 WebsocketImplSession::~WebsocketImplSession(void) = default;

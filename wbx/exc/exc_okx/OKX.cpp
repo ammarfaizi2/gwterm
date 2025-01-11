@@ -16,8 +16,8 @@ OKX::OKX(void) = default;
 
 OKX::~OKX(void) = default;
 
-void OKX::listenPriceUpdate(const std::string &symbol,
-			    price_update_cb_t cb, void *udata)
+void OKX::listenPriceUpdate(const std::string &symbol, PriceUpdateCb_t cb,
+			    void *udata)
 {
 	if (!ws_started_)
 		throw std::runtime_error("WebSocket has not been started");
@@ -27,7 +27,7 @@ void OKX::listenPriceUpdate(const std::string &symbol,
 	j["op"] = "subscribe";
 	j["args"] = json::array();
 	j["args"].push_back({
-		{"channel", "mark-price"},
+		{"channel", "tickers"},
 		{"instId", symbol}
 	});
 
@@ -45,7 +45,7 @@ void OKX::unlistenPriceUpdate(const std::string &symbol)
 	j["op"] = "unsubscribe";
 	j["args"] = json::array();
 	j["args"].push_back({
-		{"channel", "mark-price"},
+		{"channel", "tickers"},
 		{"instId", symbol}
 	});
 
@@ -68,11 +68,10 @@ size_t OKX::onWsRead(const char *data, size_t len)
 		std::string str(data, len);
 		json j = json::parse(str);
 		handleWsChannel(&j);
+		wss_->read();
 	} catch (const std::exception &e) {
-		printf("onWsRead: %s\n", e.what());
 	}
 
-	wss_->readAfter();
 	return len;
 }
 
@@ -122,6 +121,8 @@ inline void OKX::handleWsChannel(void *a)
 
 	if (chan == "mark-price")
 		handleChanMarkPrice(a);
+	else if (chan == "tickers")
+		handleChanTickers(a);
 }
 
 inline void OKX::handleChanMarkPrice(void *a)
@@ -135,12 +136,30 @@ inline void OKX::handleChanMarkPrice(void *a)
 		if (!d["instId"].is_string() || !d["markPx"].is_string())
 			continue;
 
-		struct price_update pu;
-
-		printf("handleChanMarkPrice: %s\n", d.dump().c_str());
+		struct ExcPriceUpdate pu;
 
 		pu.symbol = d["instId"];
 		pu.price = d["markPx"];
+		pu.ts = std::stoul(d["ts"].get<std::string>());
+		invokePriceUpdateCb(pu);
+	}
+}
+
+inline void OKX::handleChanTickers(void *a)
+{
+	json &j = *static_cast<json *>(a);
+
+	if (!j["data"].is_array())
+		return;
+
+	for (const auto &d : j["data"]) {
+		if (!d["instId"].is_string() || !d["last"].is_string())
+			continue;
+
+		struct ExcPriceUpdate pu;
+
+		pu.symbol = d["instId"];
+		pu.price = d["last"];
 		pu.ts = std::stoul(d["ts"].get<std::string>());
 		invokePriceUpdateCb(pu);
 	}
