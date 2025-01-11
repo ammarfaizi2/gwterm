@@ -78,7 +78,8 @@ void OKX::unlistenPriceUpdateBatch(const std::vector<std::string> &symbols)
 		delPriceUpdateCb(s);
 	}
 
-	wss_->write(j.dump().c_str(), j.dump().size());
+	std::string str = j.dump();
+	wss_->write(str.c_str(), str.size());
 }
 
 void OKX::listenPriceUpdate(const std::string &symbol, PriceUpdateCb_t cb,
