@@ -12,82 +12,120 @@ ExchangeFoundation::ExchangeFoundation(void) = default;
 
 ExchangeFoundation::~ExchangeFoundation(void) = default;
 
-void ExchangeFoundation::addPriceUpdateCb(const std::string &symbol,
-					  PriceUpdateCb_t cb,
-					  void *udata)
+// static
+std::string ExchangeFoundation::formatPrice(uint64_t price, uint64_t prec)
 {
-	std::lock_guard<std::mutex> lock(m_price_update_cbs_mtx_);
+	char *dst, *src;
+	size_t cp_len;
+	char buf[128];
+	size_t len;
+
+	len = (size_t)snprintf(buf, sizeof(buf), "%llu", (unsigned long long)price);
+	if (prec >= len) {
+		dst = &buf[prec - len + 2];
+		src = buf;
+		cp_len = len + 1;
+		memmove(dst, src, cp_len);
+		buf[0] = '0';
+		buf[1] = '.';
+		memset(buf + 2, '0', prec - len);
+	} else {
+		dst = buf + len - prec + 1;
+		src = buf + len - prec;
+		cp_len = prec + 1;
+		memmove(dst, src, cp_len);
+		buf[len - prec] = '.';
+	}
+
+	return buf;
+}
+
+inline void ExchangeFoundation::__addPriceUpdateCb(const std::string &symbol,
+						   PriceUpdateCb_t cb, void *udata)
+{
 	m_price_update_cbs_[symbol] = {cb, udata};
 }
 
-void ExchangeFoundation::delPriceUpdateCb(const std::string &symbol)
+
+inline void ExchangeFoundation::addPriceUpdateCb(const std::string &symbol,
+						 PriceUpdateCb_t cb, void *udata)
 {
 	std::lock_guard<std::mutex> lock(m_price_update_cbs_mtx_);
+	__addPriceUpdateCb(symbol, cb, udata);
+}
+
+inline void ExchangeFoundation::__addPriceUpdateCbBatch(const std::vector<std::string> &symbols,
+							PriceUpdateCb_t cb, void *udata)
+{
+	for (const auto &symbol : symbols)
+		__addPriceUpdateCb(symbol, cb, udata);
+}
+
+inline void ExchangeFoundation::addPriceUpdateCbBatch(const std::vector<std::string> &symbols,
+							PriceUpdateCb_t cb, void *udata)
+{
+	std::lock_guard<std::mutex> lock(m_price_update_cbs_mtx_);
+	__addPriceUpdateCbBatch(symbols, cb, udata);
+}
+
+inline void ExchangeFoundation::__addPriceUpdateCbBatch(const std::vector<std::string> &symbols,
+							std::vector<PriceUpdateCb_t> cbs,
+							std::vector<void *> udatas)
+{
+	size_t i, n;
+
+	n = symbols.size();
+	if (cbs.size() != n || udatas.size() != n)
+		throw std::runtime_error("Invalid arguments");
+
+	for (i = 0; i < n; i++)
+		__addPriceUpdateCb(symbols[i], cbs[i], udatas[i]);
+}
+
+inline void ExchangeFoundation::addPriceUpdateCbBatch(const std::vector<std::string> &symbols,
+							std::vector<PriceUpdateCb_t> cbs,
+							std::vector<void *> udatas)
+{
+	std::lock_guard<std::mutex> lock(m_price_update_cbs_mtx_);
+	__addPriceUpdateCbBatch(symbols, cbs, udatas);
+}
+
+inline void ExchangeFoundation::__delPriceUpdateCb(const std::string &symbol)
+{
 	m_price_update_cbs_.erase(symbol);
 }
 
-void ExchangeFoundation::invokePriceUpdateCb(const ExcPriceUpdate &up)
+inline void ExchangeFoundation::delPriceUpdateCb(const std::string &symbol)
 {
 	std::lock_guard<std::mutex> lock(m_price_update_cbs_mtx_);
-
-	auto it = m_price_update_cbs_.find(up.symbol);
-	if (it != m_price_update_cbs_.end()) {
-		setLastPrice(up.symbol, up.price);
-
-		auto &d = it->second;
-		d.cb(this, up, d.udata);
-	}
+	__delPriceUpdateCb(symbol);
 }
 
-void ExchangeFoundation::dumpOHLCData(const std::string &symbol)
+inline void ExchangeFoundation::__delPriceUpdateCbBatch(const std::vector<std::string> &symbols)
 {
-	static const char tred[] = "\033[31m";
-	static const char tgreen[] = "\033[32m";
-	const struct OHLCGroup &og = m_ohlc_data_[symbol];
-	const struct OHLCPrice &p = og.ohlc_1m.prices.back();
+	for (const auto &symbol : symbols)
+		__delPriceUpdateCb(symbol);
+}
 
-	if (p.curr == p.prev)
-		return;
-
-	std::string open = formatPrice(p.open, p.prec);
-	std::string high = formatPrice(p.high, p.prec);
-	std::string low = formatPrice(p.low, p.prec);
-	std::string close = formatPrice(p.close, p.prec);
-	std::string curr = formatPrice(p.curr, p.prec);
-	std::string prev = formatPrice(p.prev, p.prec);
-
-	if (p.close > p.open)
-		printf("%s", tgreen);
-	else if (p.close < p.open)
-		printf("%s", tred);
-
-	printf("%s\033[0m | tso: %llu, cts: %llu, tsc: %llu, O: %s, H: %s, L: %s, C: %s, curr: %s, prev: %s",
-	       symbol.c_str(), (unsigned long long)p.ts_open, (unsigned long long)p.ts_last,
-	       (unsigned long long)p.ts_close, open.c_str(), high.c_str(), low.c_str(),
-	       close.c_str(), curr.c_str(), prev.c_str());
-
-	if (p.close != p.open) {
-		double diff = ((double)p.close - (double)p.open) / p.prec;
-		double perc = (diff / (double)p.open) * 100.0;
-		printf(", diff: %.2f, perc: %.2f%%", diff, perc);
-	}
-
-	printf("\n");
+inline void ExchangeFoundation::delPriceUpdateCbBatch(const std::vector<std::string> &symbols)
+{
+	std::lock_guard<std::mutex> lock(m_price_update_cbs_mtx_);
+	__delPriceUpdateCbBatch(symbols);
 }
 
 // static
 void ExchangeFoundation::__setOHLCData(struct OHLCData &dt, uint64_t price,
 				       uint64_t prec, uint64_t ts, uint64_t tsec)
 {
-	if (dt.nr_samples == 0) {
+	if (dt.prices.empty()) {
 		uint64_t ts_close;
 
 		ts_close = ts / 1000;
 		ts_close = ts_close - (ts_close % tsec) + tsec;
 		ts_close *= 1000;
 
-		dt.prices.push_back({ts, ts, ts_close, price, price, price, price, price, price, prec});
-		dt.nr_samples++;
+		dt.prices.push_back({ts, ts, ts_close, price, price, price,
+					price, price, price, prec});
 		return;
 	}
 	
@@ -101,8 +139,11 @@ void ExchangeFoundation::__setOHLCData(struct OHLCData &dt, uint64_t price,
 		ts_close *= 1000;
 		ts_open = p.ts_close;
 
-		dt.prices.push_back({ts, ts_open, ts_close, price, price, price, price, price, price, prec});
-		dt.nr_samples++;
+		dt.prices.push_back({ts, ts_open, ts_close, price, price, price,
+					price, price, price, prec});
+
+		if (dt.prices.size() > OHLCData::max_samples)
+			dt.prices.erase(dt.prices.begin());
 	} else {
 		if (p.prec < prec) {
 			uint64_t mul, prec_diff;
@@ -138,6 +179,7 @@ void ExchangeFoundation::__setOHLCData(struct OHLCData &dt, uint64_t price,
 }
 
 // Must hold m_last_prices_mtx_ lock.
+inline
 void ExchangeFoundation::__setOHLCGroup(const std::string &symbol, uint64_t price,
 					uint64_t prec, uint64_t ts)
 {
@@ -153,6 +195,7 @@ void ExchangeFoundation::__setOHLCGroup(const std::string &symbol, uint64_t pric
 	__setOHLCData(og.ohlc_1d, price, prec, ts, 86400);
 }
 
+inline
 void ExchangeFoundation::setLastPrice(const std::string &symbol,
 				      const std::string &price_c,
 				      uint64_t ts)
@@ -197,41 +240,15 @@ void ExchangeFoundation::setLastPrice(const std::string &symbol,
 	__setOHLCGroup(symbol, cur_price, cur_prec, ts);
 }
 
+inline
 void ExchangeFoundation::delLastPrice(const std::string &symbol)
 {
 	std::lock_guard<std::mutex> lock(m_last_prices_mtx_);
 	m_last_prices_.erase(symbol);
 }
 
-// static
-std::string ExchangeFoundation::formatPrice(uint64_t price, uint64_t prec)
-{
-	char *dst, *src;
-	size_t cp_len;
-	char buf[128];
-	size_t len;
-
-	len = (size_t)snprintf(buf, sizeof(buf), "%llu", (unsigned long long)price);
-	if (prec >= len) {
-		dst = &buf[prec - len + 2];
-		src = buf;
-		cp_len = len + 1;
-		memmove(dst, src, cp_len);
-		buf[0] = '0';
-		buf[1] = '.';
-		memset(buf + 2, '0', prec - len);
-	} else {
-		dst = buf + len - prec + 1;
-		src = buf + len - prec;
-		cp_len = prec + 1;
-		memmove(dst, src, cp_len);
-		buf[len - prec] = '.';
-	}
-
-	return buf;
-}
-
-std::string ExchangeFoundation::getLastPrice(const std::string &symbol)
+inline
+std::string ExchangeFoundation::__getLastPrice(const std::string &symbol)
 {
 	uint64_t price, prec;
 
@@ -252,36 +269,113 @@ std::string ExchangeFoundation::getLastPrice(const std::string &symbol)
 	return formatPrice(price, prec);
 }
 
-void ExchangeFoundation::setWebsocket(std::shared_ptr<Websocket> ws)
+void ExchangeFoundation::invokePriceUpdateCb(const ExcPriceUpdate &up)
 {
-	ws_ = ws;
+	std::unique_lock<std::mutex> lock(m_price_update_cbs_mtx_);
+
+	auto it = m_price_update_cbs_.find(up.symbol);
+	if (it != m_price_update_cbs_.end()) {
+		setLastPrice(up.symbol, up.price);
+
+		auto d = it->second;
+		d.cb(this, up, d.udata);
+	}
+}
+
+std::string ExchangeFoundation::getLastPrice(const std::string &symbol,
+					     std::function<void(const std::string &)> cb)
+{
+	return __getLastPrice(symbol);
+}
+
+void ExchangeFoundation::__listenPriceUpdateBatch(const std::vector<std::string> &symbols)
+{
+	for (const auto &symbol : symbols)
+		__listenPriceUpdate(symbol);
+}
+
+void ExchangeFoundation::__unlistenPriceUpdateBatch(const std::vector<std::string> &symbols)
+{
+	for (const auto &symbol : symbols)
+		__unlistenPriceUpdate(symbol);
+}
+
+void ExchangeFoundation::listenPriceUpdate(const std::string &symbol,
+					   PriceUpdateCb_t cb, void *udata)
+{
+	addPriceUpdateCb(symbol, cb, udata);
+	__listenPriceUpdate(symbol);
+}
+
+void ExchangeFoundation::unlistenPriceUpdate(const std::string &symbol)
+{
+	delPriceUpdateCb(symbol);
+	__unlistenPriceUpdate(symbol);
 }
 
 void ExchangeFoundation::listenPriceUpdateBatch(const std::vector<std::string> &symbols,
 						PriceUpdateCb_t cb, void *udata)
 {
-	size_t i;
-
-	for (i = 0; i < symbols.size(); i++)
-		listenPriceUpdate(symbols[i], cb, udata);
+	addPriceUpdateCbBatch(symbols, cb, udata);
+	__listenPriceUpdateBatch(symbols);
 }
 
 void ExchangeFoundation::listenPriceUpdateBatch(const std::vector<std::string> &symbols,
 						std::vector<PriceUpdateCb_t> cbs,
 						std::vector<void *> udatas)
 {
-	size_t i;
-
-	for (i = 0; i < symbols.size(); i++)
-		listenPriceUpdate(symbols[i], cbs[i], udatas[i]);
+	addPriceUpdateCbBatch(symbols, cbs, udatas);
+	__listenPriceUpdateBatch(symbols);
 }
 
 void ExchangeFoundation::unlistenPriceUpdateBatch(const std::vector<std::string> &symbols)
 {
-	size_t i;
+	delPriceUpdateCbBatch(symbols);
+	__unlistenPriceUpdateBatch(symbols);
+}
 
-	for (i = 0; i < symbols.size(); i++)
-		unlistenPriceUpdate(symbols[i]);
+void ExchangeFoundation::setWebsocket(std::shared_ptr<Websocket> ws)
+{
+	if (ws_ != nullptr)
+		throw std::runtime_error("Websocket already set");
+
+	ws_ = ws;
+}
+
+void ExchangeFoundation::dumpOHLCData(const std::string &symbol)
+{
+	static const char tred[] = "\033[31m";
+	static const char tgreen[] = "\033[32m";
+	const struct OHLCGroup &og = m_ohlc_data_[symbol];
+	const struct OHLCPrice &p = og.ohlc_1m.prices.back();
+
+	if (p.curr == p.prev)
+		return;
+
+	std::string open = formatPrice(p.open, p.prec);
+	std::string high = formatPrice(p.high, p.prec);
+	std::string low = formatPrice(p.low, p.prec);
+	std::string close = formatPrice(p.close, p.prec);
+	std::string curr = formatPrice(p.curr, p.prec);
+	std::string prev = formatPrice(p.prev, p.prec);
+
+	if (p.close > p.open)
+		printf("%s", tgreen);
+	else if (p.close < p.open)
+		printf("%s", tred);
+
+	printf("%s\033[0m | tso: %llu, cts: %llu, tsc: %llu, O: %s, H: %s, L: %s, C: %s, curr: %s, prev: %s",
+	       symbol.c_str(), (unsigned long long)p.ts_open, (unsigned long long)p.ts_last,
+	       (unsigned long long)p.ts_close, open.c_str(), high.c_str(), low.c_str(),
+	       close.c_str(), curr.c_str(), prev.c_str());
+
+	if (p.close != p.open) {
+		double diff = ((double)p.close - (double)p.open) / p.prec;
+		double perc = (diff / (double)p.open) * 100.0;
+		printf(", diff: %.2f, perc: %.2f%%", diff, perc);
+	}
+
+	printf("\n");
 }
 
 } /* namespace exc */

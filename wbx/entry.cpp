@@ -33,7 +33,6 @@ static void price_update_cb(ExchangeFoundation *okx, const ExcPriceUpdate &up, v
 	bool changed = false;
 	size_t i;
 
-
 	for (i = 0; i < sizeof(symbols) / sizeof(symbols[0]); i++) {
 		prices[i] = okx->getLastPrice(symbols[i]);
 		directions[i] = 0;
@@ -76,6 +75,10 @@ static void price_update_cb(ExchangeFoundation *okx, const ExcPriceUpdate &up, v
 
 	printf("\n");
 	(void)udata;
+
+	okx->getLastPrice("BCH-USDT", [](const std::string &price) {
+		std::cout << "BCH-USDT: " << price << std::endl;
+	});
 }
 
 int main(void)

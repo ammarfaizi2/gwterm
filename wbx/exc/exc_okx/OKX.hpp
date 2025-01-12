@@ -10,28 +10,33 @@ namespace exc_OKX {
 
 class OKX: public exc::ExchangeFoundation {
 private:
-	bool ws_started_ = false;
+	bool ws_pub_started_ = false;
+	bool ws_pri_started_ = false;
+	WebsocketSession *wss_pub_ = nullptr;
+	WebsocketSession *wss_pri_ = nullptr;
 
-	inline void handleWsChannel(void *a);
-	inline void handleChanMarkPrice(void *a);
-	inline void handleChanTickers(void *a);
+	inline void handlePubWsChan(void *a);
+	inline void handlePubWsChanMarkPrice(void *a);
+	inline void handlePubWsChanTickers(void *a);
+
+	inline void handlePubWsOnWsConnect(void);
+	inline void handlePubWsOnWsWrite(size_t len);
+	inline size_t handlePubWsOnWsRead(const char *data, size_t len);
+	inline void handlePubWsOnWsClose(void);
+
+	inline void startPubWs(void);
+	inline void startPriWs(void);
 
 protected:
-	virtual void onWsConnect(void);
-	virtual void onWsWrite(size_t len);
-	virtual size_t onWsRead(const char *data, size_t len);
-	virtual void onWsClose(void);
+	virtual void __listenPriceUpdate(const std::string &symbol) override;
+	virtual void __unlistenPriceUpdate(const std::string &symbol) override;
+	virtual void __listenPriceUpdateBatch(const std::vector<std::string> &symbols) override;
+	virtual void __unlistenPriceUpdateBatch(const std::vector<std::string> &symbols) override;
 
 public:
 	OKX(void);
-	~OKX(void);
-
-	virtual void listenPriceUpdate(const std::string &symbol, PriceUpdateCb_t cb, void *udata);
-	virtual void unlistenPriceUpdate(const std::string &symbol);
-	virtual void listenPriceUpdateBatch(const std::vector<std::string> &symbols, PriceUpdateCb_t cb, void *udata);
-	virtual void listenPriceUpdateBatch(const std::vector<std::string> &symbols, std::vector<PriceUpdateCb_t> cbs, std::vector<void *> udatas);
-	virtual void unlistenPriceUpdateBatch(const std::vector<std::string> &symbols);
-	virtual void start(void);
+	virtual ~OKX(void);
+	virtual void start(void) override;
 };
 
 } /* namespace exc_OKX */

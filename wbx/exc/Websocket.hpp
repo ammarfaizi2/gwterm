@@ -53,6 +53,7 @@ public:
 	void setOnClose(WsOnClose_t onClose);
 
 	void write(const char *data, size_t len);
+	inline void write(const std::string &data) { write(data.c_str(), data.size()); }
 	void read(void);
 	void run(void);
 };

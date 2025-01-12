@@ -33,7 +33,7 @@ void WebsocketImplSession::onResolve(beast::error_code ec,
 
 	beast::get_lowest_layer(ws_).expires_after(std::chrono::seconds(60));
 	beast::get_lowest_layer(ws_).async_connect(results,
-			beast::bind_front_handler(&WebsocketImplSession::onConnect,		
+			beast::bind_front_handler(&WebsocketImplSession::onConnect,
 							shared_from_this()));
 }
 
