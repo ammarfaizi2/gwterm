@@ -17,6 +17,12 @@ WebsocketImplSession::WebsocketImplSession(net::io_context &ioc,
 {
 }
 
+inline void WebsocketImplSession::invokeOnConnErr(beast::error_code &ec)
+{
+	if (onConnErr_)
+		onConnErr_(this, ec.value(), ec.message().c_str(), udata_);
+}
+
 void WebsocketImplSession::run(void)
 {
 	resolver_.async_resolve(host_, std::to_string(port_),
@@ -28,8 +34,10 @@ void WebsocketImplSession::run(void)
 void WebsocketImplSession::onResolve(beast::error_code ec,
 				     tcp::resolver::results_type results)
 {
-	if (ec)
+	if (ec) {
+		invokeOnConnErr(ec);
 		return;
+	}
 
 	beast::get_lowest_layer(ws_).expires_after(std::chrono::seconds(60));
 	beast::get_lowest_layer(ws_).async_connect(results,
@@ -42,8 +50,10 @@ void WebsocketImplSession::onConnect(beast::error_code ec,
 {
 	const char *host;
 
-	if (ec)
+	if (ec) {
+		invokeOnConnErr(ec);
 		return;
+	}
 
 	beast::get_lowest_layer(ws_).expires_after(std::chrono::seconds(60));
 	host = host_.c_str();
@@ -59,8 +69,10 @@ void WebsocketImplSession::onConnect(beast::error_code ec,
 
 void WebsocketImplSession::onSslHandshake(beast::error_code ec)
 {
-	if (ec)
+	if (ec) {
+		invokeOnConnErr(ec);
 		return;
+	}
 
 	beast::get_lowest_layer(ws_).expires_never();
 
@@ -79,8 +91,10 @@ void WebsocketImplSession::onSslHandshake(beast::error_code ec)
 
 void WebsocketImplSession::onHandshake(beast::error_code ec)
 {
-	if (ec)
+	if (ec) {
+		invokeOnConnErr(ec);
 		return;
+	}
 
 	if (onConnect_)
 		onConnect_(this, udata_);
@@ -98,8 +112,10 @@ void WebsocketImplSession::onHandshake(beast::error_code ec)
 void WebsocketImplSession::onWrite(beast::error_code ec,
 				   std::size_t bytes_transferred)
 {
-	if (ec)
+	if (ec) {
+		invokeOnConnErr(ec);
 		return;
+	}
 
 	if (onWrite_)
 		onWrite_(this, bytes_transferred, udata_);
@@ -120,8 +136,10 @@ void WebsocketImplSession::onWrite(beast::error_code ec,
 void WebsocketImplSession::onRead(beast::error_code ec,
 				  std::size_t bytes_transferred)
 {
-	if (ec)
+	if (ec) {
+		invokeOnConnErr(ec);
 		return;
+	}
 
 	if (onRead_) {
 		const char *buf = reinterpret_cast<const char *>(buffer_.data().data());

@@ -25,6 +25,7 @@ typedef std::function<void(WebsocketSession *ws_sess)> WsOnConnect_t;
 typedef std::function<size_t(WebsocketSession *ws_sess, const char *data, size_t len)> WsOnRead_t;
 typedef std::function<void(WebsocketSession *ws_sess, size_t len)> WsOnWrite_t;
 typedef std::function<void(WebsocketSession *ws_sess)> WsOnClose_t;
+typedef std::function<void(WebsocketSession *ws_sess, int code, const char *msg)> WsOnConnErr_t;
 
 class WebsocketSession {
 private:
@@ -51,6 +52,7 @@ public:
 	void setOnRead(WsOnRead_t onRead);
 	void setOnWrite(WsOnWrite_t onWrite);
 	void setOnClose(WsOnClose_t onClose);
+	void setOnConnErr(WsOnConnErr_t onConnErr);
 
 	void write(const char *data, size_t len);
 	inline void write(const std::string &data) { write(data.c_str(), data.size()); }

@@ -17,7 +17,7 @@ static const char *symbols[] = {
 	"TON-USDT",
 	"NOT-USDT",
 	"MEW-USDT",
-	"XAUT-USDT",
+	"XRP-USDT",
 };
 
 
@@ -63,22 +63,22 @@ static void price_update_cb(ExchangeFoundation *okx, const ExcPriceUpdate &up, v
 	printf("| %s |", date);
 
 	for (i = 0; i < sizeof(symbols) / sizeof(symbols[0]); i++) {
+		std::string sym = symbols[i];
+		// Remove "-USDT" from the symbol
+		sym.erase(sym.size() - 5);
+
 		if (prices[i].empty())
 			prices[i] = "N/A";
 		if (directions[i] == 1)
-			printf(" %s%s: %s%s |", tgreen, symbols[i], prices[i].c_str(), "\033[0m");
+			printf(" %s%s: %s%s |", tgreen, sym.c_str(), prices[i].c_str(), "\033[0m");
 		else if (directions[i] == -1)
-			printf(" %s%s: %s%s |", tred, symbols[i], prices[i].c_str(), "\033[0m");
+			printf(" %s%s: %s%s |", tred, sym.c_str(), prices[i].c_str(), "\033[0m");
 		else
-			printf(" %s%s%s: %s |", tcyan, symbols[i], "\033[0m", prices[i].c_str());
+			printf(" %s%s%s: %s |", tcyan, sym.c_str(), "\033[0m", prices[i].c_str());
 	}
 
 	printf("\n");
 	(void)udata;
-
-	okx->getLastPrice("BCH-USDT", [](const std::string &price) {
-		std::cout << "BCH-USDT: " << price << std::endl;
-	});
 }
 
 int main(void)

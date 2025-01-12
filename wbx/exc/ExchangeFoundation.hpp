@@ -5,6 +5,7 @@
 
 #include <string>
 #include <mutex>
+#include <queue>
 #include <memory>
 #include <functional>
 #include <unordered_map>
@@ -63,7 +64,7 @@ class ExchangeFoundation {
 private:
 	std::mutex m_price_update_cbs_mtx_;
 	std::unordered_map<std::string, PriceUpdateCbData> m_price_update_cbs_;
-	std::unordered_map<std::string, PriceUpdateCbData> m_tmp_price_update_cbs_;
+	std::unordered_map<std::string, std::queue<PriceUpdateCb_t>> m_get_last_price_cbs_;
 
 	std::mutex m_last_prices_mtx_;
 	std::unordered_map<std::string, uint64_t> m_last_prices_;
@@ -96,8 +97,8 @@ private:
 				     void *udata = nullptr);
 	inline void __delPriceUpdateCb(const std::string &symbol);
 	inline void delPriceUpdateCb(const std::string &symbol);
-
-	inline std::string __getLastPrice(const std::string &symbol);
+	inline void getLastPriceNoListen(const std::string &symbol,
+					 std::function<void(const std::string &)> cb);
 
 protected:
 	std::shared_ptr<Websocket> ws_ = nullptr;

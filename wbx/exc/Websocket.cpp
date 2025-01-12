@@ -67,6 +67,16 @@ void WebsocketSession::setOnClose(WsOnClose_t onClose)
 	});
 }
 
+void WebsocketSession::setOnConnErr(WsOnConnErr_t onConnErr)
+{
+	ws_sess_->setOnConnErr([ocef=std::move(onConnErr)](
+					WebsocketImplSession *ws_sess, int code,
+					const char *msg, void *udata) {
+		WebsocketSession *ws = static_cast<WebsocketSession *>(udata);
+		ocef(ws, code, msg);
+	});
+}
+
 void WebsocketSession::setHost(const std::string &host)
 {
 	ws_sess_->setHost(host);

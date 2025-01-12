@@ -37,6 +37,8 @@ set(SOURCES
     exc/exc_okx/OKX.hpp
 )
 
+set(CMAKE_BUILD_TYPE Release)
+
 # Add the executable target
 add_executable(wbx ${SOURCES})
 

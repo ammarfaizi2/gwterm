@@ -247,45 +247,89 @@ void ExchangeFoundation::delLastPrice(const std::string &symbol)
 	m_last_prices_.erase(symbol);
 }
 
-inline
-std::string ExchangeFoundation::__getLastPrice(const std::string &symbol)
-{
-	uint64_t price, prec;
-
-	{
-		std::lock_guard<std::mutex> lock(m_last_prices_mtx_);
-		auto it_price = m_last_prices_.find(symbol);
-		auto it_prec = m_precisions_.find(symbol);
-		if (it_price == m_last_prices_.end() || it_prec == m_precisions_.end())
-			return "";
-
-		price = it_price->second;
-		prec = it_prec->second;
-	}
-
-	if (prec == 0)
-		return std::to_string(price);
-
-	return formatPrice(price, prec);
-}
-
 void ExchangeFoundation::invokePriceUpdateCb(const ExcPriceUpdate &up)
 {
 	std::unique_lock<std::mutex> lock(m_price_update_cbs_mtx_);
 
 	auto it = m_price_update_cbs_.find(up.symbol);
 	if (it != m_price_update_cbs_.end()) {
-		setLastPrice(up.symbol, up.price);
-
 		auto d = it->second;
+		lock.unlock();
+		setLastPrice(up.symbol, up.price);
 		d.cb(this, up, d.udata);
+		lock.lock();
 	}
+
+	while (1) {
+		auto it_get = m_get_last_price_cbs_.find(up.symbol);
+		if (it_get == m_get_last_price_cbs_.end())
+			break;
+
+		auto &cbs = it_get->second;
+		if (cbs.empty()) {
+			m_get_last_price_cbs_.erase(up.symbol);
+			if (m_price_update_cbs_.find(up.symbol) == m_price_update_cbs_.end())
+				__unlistenPriceUpdate(up.symbol);
+			break;
+		}
+
+		auto cb = cbs.front();
+		cbs.pop();
+
+		lock.unlock();
+		cb(this, up, nullptr);
+		lock.lock();
+	}
+}
+
+inline
+void ExchangeFoundation::getLastPriceNoListen(const std::string &symbol,
+					      std::function<void(const std::string &)> cb)
+{
+	std::unique_lock<std::mutex> lock(m_price_update_cbs_mtx_);
+	std::queue<PriceUpdateCb_t> &cbs = m_get_last_price_cbs_[symbol];
+
+	cbs.push([cb](ExchangeFoundation *exc, const ExcPriceUpdate &up, void *udata) {
+		cb(up.price);
+		(void)exc;
+		(void)udata;
+	});
+
+	if (m_price_update_cbs_.find(symbol) == m_price_update_cbs_.end())
+		__listenPriceUpdate(symbol);
 }
 
 std::string ExchangeFoundation::getLastPrice(const std::string &symbol,
 					     std::function<void(const std::string &)> cb)
 {
-	return __getLastPrice(symbol);
+	std::unique_lock<std::mutex> lock(m_last_prices_mtx_);
+	uint64_t price, prec;
+
+	auto it_price = m_last_prices_.find(symbol);
+	auto it_prec = m_precisions_.find(symbol);
+	if (it_price == m_last_prices_.end() || it_prec == m_precisions_.end()) {
+		lock.unlock();
+		if (cb)
+			getLastPriceNoListen(symbol, cb);
+
+		return "";
+	}
+	price = it_price->second;
+	prec = it_prec->second;
+	lock.unlock();
+
+	std::string price_str;
+	if (prec == 0)
+		price_str = std::to_string(price);
+	else
+		price_str = formatPrice(price, prec);
+
+	if (cb) {
+		cb(price_str);
+		return "";
+	} else {
+		return price_str;
+	}
 }
 
 void ExchangeFoundation::__listenPriceUpdateBatch(const std::vector<std::string> &symbols)

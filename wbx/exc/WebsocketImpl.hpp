@@ -39,6 +39,7 @@ typedef std::function<void(WebsocketImplSession *ws_sess, void *udata)> WsImplOn
 typedef std::function<size_t(WebsocketImplSession *ws_sess, const char *data, size_t len, void *udata)> WsImplOnRead_t;
 typedef std::function<void(WebsocketImplSession *ws_sess, size_t len, void *udata)> WsImplOnWrite_t;
 typedef std::function<void(WebsocketImplSession *ws_sess, void *udata)> WsImplOnClose_t;
+typedef std::function<void(WebsocketImplSession *ws_sess, int code, const char *msg, void *udata)> WsImplOnConnErr_t;
 
 struct write_buf {
 	void	*data_;
@@ -108,12 +109,14 @@ private:
 	WsImplOnRead_t		onRead_ = nullptr;
 	WsImplOnWrite_t		onWrite_ = nullptr;
 	WsImplOnClose_t		onClose_ = nullptr;
+	WsImplOnConnErr_t	onConnErr_ = nullptr;
 	std::atomic<int64_t>	nr_read_after_;
 
 	std::mutex			wq_mtx_;
 	std::queue<struct write_buf>	write_queue_;
 
 	bool popNrRead(void);
+	inline void invokeOnConnErr(beast::error_code &ec);
 
 public:
 	explicit WebsocketImplSession(net::io_context &ioc, ssl::context &ctx);
@@ -128,6 +131,7 @@ public:
 	inline void setOnRead(WsImplOnRead_t onRead) { onRead_ = onRead; }
 	inline void setOnWrite(WsImplOnWrite_t onWrite) { onWrite_ = onWrite; }
 	inline void setOnClose(WsImplOnClose_t onClose) { onClose_ = onClose; }
+	inline void setOnConnErr(WsImplOnConnErr_t onConnErr) { onConnErr_ = onConnErr; }
 
 	void run(void);
 	void onResolve(beast::error_code ec, tcp::resolver::results_type results);
