@@ -37,7 +37,7 @@ protected:
 	virtual void __unlistenPriceUpdateBatch(const std::vector<std::string> &symbols) override;
 
 public:
-	OKX(void);
+	OKX(std::shared_ptr<Websocket> ws);
 	virtual ~OKX(void);
 	virtual void start(void) override;
 	virtual void close(void) override;

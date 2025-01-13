@@ -40,7 +40,7 @@ protected:
 	virtual void __unlistenPriceUpdateBatch(const std::vector<std::string> &symbols) override;
 
 public:
-	Binance(void);
+	Binance(std::shared_ptr<Websocket> ws);
 	virtual ~Binance(void);
 	virtual void start(void) override;
 	virtual void close(void) override;

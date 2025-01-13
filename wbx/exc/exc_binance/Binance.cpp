@@ -205,7 +205,11 @@ void Binance::close(void)
 	}
 }
 
-Binance::Binance(void) = default;
+Binance::Binance(std::shared_ptr<Websocket> ws):
+	ExchangeFoundation(ws)
+{
+}
+
 Binance::~Binance(void) = default;
 
 } /* namespace exc_Binance */

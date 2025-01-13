@@ -110,7 +110,7 @@ protected:
 	virtual void __unlistenPriceUpdateBatch(const std::vector<std::string> &symbols);
 
 public:
-	ExchangeFoundation(void);
+	ExchangeFoundation(std::shared_ptr<Websocket> ws);
 	virtual ~ExchangeFoundation(void);
 
 	static std::string formatPrice(uint64_t price, uint64_t precision);
@@ -129,7 +129,6 @@ public:
 	std::string getLastPrice(const std::string &symbol,
 				 std::function<void(const std::string &)> cb = nullptr);
 
-	void setWebsocket(std::shared_ptr<Websocket> ws);
 	void dumpOHLCData(const std::string &symbol);
 
 	virtual void start(void) = 0;

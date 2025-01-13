@@ -8,7 +8,10 @@
 namespace wbx {
 namespace exc {
 
-ExchangeFoundation::ExchangeFoundation(void) = default;
+ExchangeFoundation::ExchangeFoundation(std::shared_ptr<Websocket> ws):
+	ws_(ws)
+{
+}
 
 ExchangeFoundation::~ExchangeFoundation(void) = default;
 
@@ -381,14 +384,6 @@ void ExchangeFoundation::unlistenPriceUpdateBatch(const std::vector<std::string>
 {
 	delPriceUpdateCbBatch(symbols);
 	__unlistenPriceUpdateBatch(symbols);
-}
-
-void ExchangeFoundation::setWebsocket(std::shared_ptr<Websocket> ws)
-{
-	if (ws_ != nullptr)
-		throw std::runtime_error("Websocket already set");
-
-	ws_ = ws;
 }
 
 void ExchangeFoundation::dumpOHLCData(const std::string &symbol)

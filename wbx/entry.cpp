@@ -63,7 +63,7 @@ static void price_update_cb(ExchangeFoundation *okx, const ExcPriceUpdate &up, v
 		return;
 
 	strftime(date, sizeof(date), "%Y-%m-%d %H:%M:%S", tm);
-	printf("| %s | %s |", date, udata);
+	printf("| %s | %s |", date, static_cast<const char *>(udata));
 
 	for (i = 0; i < sizeof(symbols) / sizeof(symbols[0]); i++) {
 		std::string sym = symbols[i];
@@ -86,26 +86,24 @@ static void price_update_cb(ExchangeFoundation *okx, const ExcPriceUpdate &up, v
 
 int main(void)
 {
-	std::shared_ptr<Websocket> ws = std::make_unique<Websocket>();
-	std::unique_ptr<OKX> okx = std::make_unique<OKX>();
-	std::unique_ptr<Binance> binance = std::make_unique<Binance>();
+	std::shared_ptr<Websocket> ws = std::make_shared<Websocket>();
+	std::unique_ptr<Binance> bnb = std::make_unique<Binance>(ws);
+	std::unique_ptr<OKX> okx = std::make_unique<OKX>(ws);
 
 	{
 		std::vector<std::string> symbols_v(symbols, symbols + sizeof(symbols) / sizeof(symbols[0]));
 		char *p;
 
-		okx->setWebsocket(ws);
+		bnb->start();
+		p = (char *)"binance ";
+		bnb->listenPriceUpdateBatch(symbols_v, [](ExchangeFoundation *binance, const ExcPriceUpdate &up, void *udata) {
+			price_update_cb<Binance>(binance, up, udata);
+		}, p);
+
 		okx->start();
 		p = (char *)"okx     ";
 		okx->listenPriceUpdateBatch(symbols_v, [](ExchangeFoundation *okx, const ExcPriceUpdate &up, void *udata) {
 			price_update_cb<OKX>(okx, up, udata);
-		}, p);
-
-		binance->setWebsocket(ws);
-		binance->start();
-		p = (char *)"binance ";
-		binance->listenPriceUpdateBatch(symbols_v, [](ExchangeFoundation *binance, const ExcPriceUpdate &up, void *udata) {
-			price_update_cb<Binance>(binance, up, udata);
 		}, p);
 	}
 

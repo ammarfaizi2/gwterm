@@ -186,7 +186,11 @@ void OKX::close(void)
 	}
 }
 
-OKX::OKX(void) = default;
+OKX::OKX(std::shared_ptr<Websocket> ws):
+	ExchangeFoundation(ws)
+{
+}
+
 OKX::~OKX(void) = default;
 
 } /* namespace exc_OKX */
