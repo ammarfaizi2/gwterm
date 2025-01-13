@@ -1,26 +1,29 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
-#ifndef EXC__EXCHANGE__EXC_OKX__OKX__HPP
-#define EXC__EXCHANGE__EXC_OKX__OKX__HPP
+#ifndef EXC__EXCHANGE__EXC_BINANCE__BINANCE__HPP
+#define EXC__EXCHANGE__EXC_BINANCE__BINANCE__HPP
 
 #include <string>
 #include <functional>
+#include <unordered_map>
 #include <wbx/exc/ExchangeFoundation.hpp>
 
 namespace wbx {
 namespace exc {
-namespace exc_OKX {
+namespace exc_Binance {
 
-class OKX: public exc::ExchangeFoundation {
+class Binance: public exc::ExchangeFoundation {
 private:
 	bool ws_pub_started_ = false;
 	bool ws_pri_started_ = false;
 	WebsocketSession *wss_pub_ = nullptr;
 	WebsocketSession *wss_pri_ = nullptr;
+	uint64_t id_ = 1;
+
+	std::unordered_map<std::string, std::string> normalized_pairs_;
 
 	inline void handlePubWsChan(void *a);
-	inline void handlePubWsChanMarkPrice(void *a);
-	inline void handlePubWsChanTickers(void *a);
+	inline void handlePubWsChanAggTrade(void *a);
 
 	inline void handlePubWsOnWsConnect(void);
 	inline void handlePubWsOnWsWrite(size_t len);
@@ -37,8 +40,8 @@ protected:
 	virtual void __unlistenPriceUpdateBatch(const std::vector<std::string> &symbols) override;
 
 public:
-	OKX(void);
-	virtual ~OKX(void);
+	Binance(void);
+	virtual ~Binance(void);
 	virtual void start(void) override;
 	virtual void close(void) override;
 };
@@ -47,4 +50,4 @@ public:
 } /* namespace exc */
 } /* namespace wbx */
 
-#endif /* #ifndef EXC__EXCHANGE__EXC_OKX__OKX__HPP */
+#endif /* #ifndef EXC__EXCHANGE__EXC_BINANCE__BINANCE__HPP */

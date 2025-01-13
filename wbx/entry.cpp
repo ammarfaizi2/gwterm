@@ -2,25 +2,27 @@
 
 #include <iostream>
 #include <wbx/exc/exc_okx/OKX.hpp>
+#include <wbx/exc/exc_binance/Binance.hpp>
 
 using namespace wbx::exc;
 
 using wbx::exc::Websocket;
 using wbx::exc::ExchangeFoundation;
 using wbx::exc::exc_OKX::OKX;
+using wbx::exc::exc_Binance::Binance;
 
 static const char *symbols[] = {
 	"BTC-USDT",
 	"ETH-USDT",
-	"SOL-USDT",
 	"BNB-USDT",
+	"SOL-USDT",
+	"XRP-USDT",
 	"TON-USDT",
 	"NOT-USDT",
-	"MEW-USDT",
-	"XRP-USDT",
+	"AAVE-USDT",
 };
 
-
+template <typename T>
 static void price_update_cb(ExchangeFoundation *okx, const ExcPriceUpdate &up, void *udata)
 {
 	static const char tred[] = "\033[31m";
@@ -32,6 +34,7 @@ static void price_update_cb(ExchangeFoundation *okx, const ExcPriceUpdate &up, v
 	std::string prices[sizeof(symbols) / sizeof(symbols[0])];
 	bool changed = false;
 	size_t i;
+
 
 	for (i = 0; i < sizeof(symbols) / sizeof(symbols[0]); i++) {
 		prices[i] = okx->getLastPrice(symbols[i]);
@@ -60,7 +63,7 @@ static void price_update_cb(ExchangeFoundation *okx, const ExcPriceUpdate &up, v
 		return;
 
 	strftime(date, sizeof(date), "%Y-%m-%d %H:%M:%S", tm);
-	printf("| %s |", date);
+	printf("| %s | %s |", date, udata);
 
 	for (i = 0; i < sizeof(symbols) / sizeof(symbols[0]); i++) {
 		std::string sym = symbols[i];
@@ -85,13 +88,25 @@ int main(void)
 {
 	std::shared_ptr<Websocket> ws = std::make_unique<Websocket>();
 	std::unique_ptr<OKX> okx = std::make_unique<OKX>();
-
-	okx->setWebsocket(ws);
-	okx->start();
+	std::unique_ptr<Binance> binance = std::make_unique<Binance>();
 
 	{
 		std::vector<std::string> symbols_v(symbols, symbols + sizeof(symbols) / sizeof(symbols[0]));
-		okx->listenPriceUpdateBatch(symbols_v, price_update_cb, nullptr);
+		char *p;
+
+		okx->setWebsocket(ws);
+		okx->start();
+		p = (char *)"okx     ";
+		okx->listenPriceUpdateBatch(symbols_v, [](ExchangeFoundation *okx, const ExcPriceUpdate &up, void *udata) {
+			price_update_cb<OKX>(okx, up, udata);
+		}, p);
+
+		binance->setWebsocket(ws);
+		binance->start();
+		p = (char *)"binance ";
+		binance->listenPriceUpdateBatch(symbols_v, [](ExchangeFoundation *binance, const ExcPriceUpdate &up, void *udata) {
+			price_update_cb<Binance>(binance, up, udata);
+		}, p);
 	}
 
 	ws->run();

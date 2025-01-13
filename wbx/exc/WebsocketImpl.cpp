@@ -5,9 +5,27 @@
 
 #include <cstdio>
 #include <wbx/exc/RootCerts.hpp>
+#include <boost/utility/string_view.hpp>
+
+using boost::string_view;
 
 namespace wbx {
 namespace exc {
+
+static bool is_error_code_fine(beast::error_code &ec)
+{
+	if (!ec)
+		return true;
+
+	if (ec.value() != 335544539)
+		return false;
+
+	if (string_view{ec.category().name()} != "asio.ssl")
+		return false;
+
+	BOOST_ASSERT(ec.message() == "short read");
+	return true;
+}
 
 WebsocketImplSession::WebsocketImplSession(net::io_context &ioc,
 					   ssl::context &ctx):
@@ -34,7 +52,7 @@ void WebsocketImplSession::run(void)
 void WebsocketImplSession::onResolve(beast::error_code ec,
 				     tcp::resolver::results_type results)
 {
-	if (ec) {
+	if (!is_error_code_fine(ec)) {
 		invokeOnConnErr(ec);
 		return;
 	}
@@ -50,7 +68,7 @@ void WebsocketImplSession::onConnect(beast::error_code ec,
 {
 	const char *host;
 
-	if (ec) {
+	if (!is_error_code_fine(ec)) {
 		invokeOnConnErr(ec);
 		return;
 	}
@@ -69,7 +87,7 @@ void WebsocketImplSession::onConnect(beast::error_code ec,
 
 void WebsocketImplSession::onSslHandshake(beast::error_code ec)
 {
-	if (ec) {
+	if (!is_error_code_fine(ec)) {
 		invokeOnConnErr(ec);
 		return;
 	}
@@ -91,7 +109,7 @@ void WebsocketImplSession::onSslHandshake(beast::error_code ec)
 
 void WebsocketImplSession::onHandshake(beast::error_code ec)
 {
-	if (ec) {
+	if (!is_error_code_fine(ec)) {
 		invokeOnConnErr(ec);
 		return;
 	}
@@ -112,7 +130,7 @@ void WebsocketImplSession::onHandshake(beast::error_code ec)
 void WebsocketImplSession::onWrite(beast::error_code ec,
 				   std::size_t bytes_transferred)
 {
-	if (ec) {
+	if (!is_error_code_fine(ec)) {
 		invokeOnConnErr(ec);
 		return;
 	}
@@ -136,7 +154,7 @@ void WebsocketImplSession::onWrite(beast::error_code ec,
 void WebsocketImplSession::onRead(beast::error_code ec,
 				  std::size_t bytes_transferred)
 {
-	if (ec) {
+	if (!is_error_code_fine(ec)) {
 		invokeOnConnErr(ec);
 		return;
 	}
@@ -200,8 +218,6 @@ void WebsocketImplSession::read(void)
 
 WebsocketImplSession::~WebsocketImplSession(void)
 {
-	if (ws_.is_open())
-		close();
 }
 
 WebsocketImpl::WebsocketImpl(void):

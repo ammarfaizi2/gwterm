@@ -35,6 +35,11 @@ std::string ExchangeFoundation::formatPrice(uint64_t price, uint64_t prec)
 		cp_len = prec + 1;
 		memmove(dst, src, cp_len);
 		buf[len - prec] = '.';
+
+		if (prec < 2) {
+			for (size_t i = 0; i < 2 - prec; i++)
+				strcat(buf, "0");
+		}
 	}
 
 	return buf;
